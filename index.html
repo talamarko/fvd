@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Excel to PDF Waybill</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <link rel="stylesheet" href="https://use.typekit.net/xxxxxx.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap"
+      rel="stylesheet" />
+    <style>
+      body {
+        direction: rtl;
+      }
+      button {
+        font-size: 20px;
+        border: none;
+        background-color: skyblue;
+        padding: 15px;
+        border-radius: 10px;
+      }
+      button:hover {
+        background-color: rgb(117, 180, 205);
+        color: white;
+      }
+      table {
+        border-color: skyblue;
+        margin: auto !important;
+      }
+      p {
+        padding-bottom: 1px !important;
+        margin: 5px 0 !important;
+      }
+      @media (max-width: 992px) {
+        p {
+          font-size: 12px !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div style="text-align: center">
+      <label for="exel" style="font-size: 20px">ارفع ملف الاكسيل هنا :</label>
+      <input type="file" id="excelFile" accept=".xlsx, .xls" />
+      <br />
+      <br />
+      <label for="pic" style="font-size: 20px">ارفع الصوره هنا :</label>
+      <input type="file" id="imageUpload" accept="image/*" />
+      <br />
+      <br />
+      <div id="tableContainer"></div>
+      <br />
+      <br />
+      <button id="generatePDF">تحميل</button>
+      <div id="pdfContainer" style="width: 360px; margin: 0; padding: 0"></div>
+    </div>
+    <script>
+      let barcode = [],
+        customerName = [],
+        phoneNum = [],
+        city = [],
+        country = [],
+        payWay = [],
+        total = [],
+        date = [],
+        address = [];
+      let imageData;
+
+      // Function to read Excel file
+      function readExcel(file) {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          const data = new Uint8Array(event.target.result);
+          const workbook = XLSX.read(data, { type: "array" });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+          // Store data in variables
+          for (let i = 1; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            // Check for empty cells and skip the row if any cell is empty
+            if (
+              row.length === 9 &&
+              row.every(
+                (cell) => cell !== undefined && cell !== null && cell !== ""
+              )
+            ) {
+              barcode.push(row[0]);
+              customerName.push(row[1]);
+              phoneNum.push(row[2]);
+              city.push(row[3]);
+              country.push(row[4]);
+              payWay.push(row[5]);
+              total.push(row[6]);
+              date.push(row[7]);
+              address.push(row[8]);
+            }
+          }
+
+          // Display data in table
+          displayTable();
+        };
+        reader.readAsArrayBuffer(file);
+      }
+      function displayTable() {
+        let tableHtml = `<table border="1">
+            <tr>
+              <th>رقم الطلب</th>
+              <th>اسم العميل</th>
+              <th>رقم الهاتف</th>
+              <th>المدينه</th>
+              <th>الدوله</th>
+              <th>طريقة الدفع</th>
+              <th>الاجمالى</th>
+              <th>التاريخ</th>
+              <th>العنوان</th>
+              </tr>`;
+        for (let i = 0; i < barcode.length; i++) {
+          tableHtml += `<tr>
+            <td contenteditable="true" class="barcode">${barcode[i]}</td>
+            <td contenteditable="true" class="customerName">${
+              customerName[i]
+            }</td>
+            <td contenteditable="true" class="phoneNum">${phoneNum[i]}</td>
+            <td contenteditable="true" class="city">${city[i]}</td>
+            <td contenteditable="true" class="country">${country[i]}</td>
+            <td contenteditable="true" class="payWay">${payWay[i]}</td>
+            <td contenteditable="true" class="total">${
+              payWay[i] == "دفع عند التسليم" ? total[i] : 0
+            }</td>
+            <td contenteditable="true" class="date">${date[i]}</td>
+            <td contenteditable="true" class="address">${address[i]}</td>
+        </tr>`;
+        }
+        tableHtml += "</table>";
+        $("#tableContainer").html(tableHtml);
+      }
+
+      // Function to handle file upload
+      $("#excelFile").on("change", function (event) {
+        const file = event.target.files[0];
+        if (file) {
+          readExcel(file);
+        }
+      });
+
+      // Function to handle image upload
+      $("#imageUpload").on("change", function (event) {
+        const file = event.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            imageData = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      // Function to generate PDF
+      $("#generatePDF").on("click", async function () {
+        $("#pdfContainer").empty();
+        $("#tableContainer table tr:gt(0)").each(function () {
+          const row = $(this);
+          const rowIndex = row.index() - 1;
+          const barcodeText = row.find(".barcode").text();
+
+          const pdfSection = $(
+            `<div class="pdfdiv" style="page-break-after: always !important; text-align: center !important; height:550px !important;"></div>`
+          );
+          if (imageData) {
+            pdfSection.append(
+              `<img src="${imageData}" alt="Image" style="width: 160px !important; height:160px !important">`
+            );
+          }
+          const dateStr = row.find(".date").text();
+          const formattedDateStr = dateStr.replace(/\s+/g, "\\"); // Replace spaces with "||"
+
+          pdfSection.append(`
+  <div style="">
+    <div style="display: flex !important; clear: both; border-bottom: 1px solid; margin-bottom: 30px" margin-top: 0;>
+      <p style="width: 20%; !important; margin-top: 0 !important; font-family: 'myriad-arabic', sans-serif !important;">رقم الهاتف</p>
+      <p style="width: 80%; !important; margin-top: 0 !important; font-family: 'myriad-arabic', sans-serif !important;">${row.find(".phoneNum").text()}</p>
+    </div>
+    <div style="display: flex !important; clear: both; border-bottom: 1px solid;">
+      <p style="width: 20%; font-family: 'myriad-arabic', sans-serif !important;">الاسم</p>
+      <p style="width: 80%; font-family: 'myriad-arabic', sans-serif !important;">${row.find(".customerName").text()}</p>
+    </div>
+    <div style="display: flex !important; clear: both; border-bottom: 1px solid;">
+      <p style="width: 20%;">المدينه</p>
+      <p style="width: 80%;">${row.find(".city").text()}</p>
+    </div>
+    <div style="display: flex !important; clear: both; border-bottom: 1px solid;">
+      <p style="width: 20%;">الدوله</p>
+      <p style="width: 80%;">${row.find(".country").text()}</p>
+    </div>
+    <div style="display: flex !important; clear: both; border-bottom: 1px solid;">
+      <p style="width: 20%;">الاجمالى</p>
+      <p style="width: 80%;">${row.find(".total").text()}</p>
+    </div>
+    <div style="display: flex !important; clear: both; border-bottom: 1px solid;">
+      <p style="width: 20%; margin-bottom: 2px !important;">التاريخ</p>
+      <p style="width: 80%; margin-bottom: 2px !important;">${formattedDateStr}</p>
+    </div>
+    <div style="display: flex !important; clear: both;">
+      <p style="width: 20%; font-family: 'myriad-arabic', sans-serif !important; margin-top: 2px !important; border-bottom: none !important;">العنوان</p>
+      <p style="width: 80%; font-family: 'myriad-arabic', sans-serif !important; margin-top: 2px !important; border-bottom: none !important;">${row.find(".address").text()}</p>
+    </div>
+  </div>
+  <svg id="barcode${rowIndex}"></svg>
+`);
+
+          $("#pdfContainer").append(pdfSection);
+
+          // Generate barcode
+          JsBarcode(`#barcode${rowIndex}`, barcodeText, {
+            format: "CODE128",
+            width: 2,
+            height: 40,
+          });
+        });
+
+        var opt = {
+          margin: [0, 0, 0, 0], // Set margins to 0 for thermal printing
+          filename: "thermal-print.pdf",
+          image: { type: "jpeg", quality: 0.98 },
+          // html2canvas: { scale: 2 },
+          jsPDF: { unit: "mm", format: [100, 150], orientation: "portrait" },
+        };
+        // $pdf->SetMargins(20,18);
+        await html2pdf().set(opt).from($("#pdfContainer")[0]).save();
+      });
+    </script>
+  </body>
+</html>
